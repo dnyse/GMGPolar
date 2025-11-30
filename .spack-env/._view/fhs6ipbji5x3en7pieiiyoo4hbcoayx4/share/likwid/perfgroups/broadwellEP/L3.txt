@@ -1,0 +1,1 @@
+/home/dhuber/.source/spack/opt/spack/linux-skylake/likwid-5.4.1-py6l5icc5f33oo3jjyfrtxb4pqxekqta/share/likwid/perfgroups/broadwellEP/L3.txt

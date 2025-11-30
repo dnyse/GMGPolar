@@ -1,0 +1,1 @@
+/home/dhuber/.source/spack/opt/spack/linux-skylake/lua-5.4.6-jieckcq3dgzh5zensmzn2xwkb6xsuah3/share/lua/5.4/luarocks/manif.lua

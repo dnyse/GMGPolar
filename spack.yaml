@@ -1,0 +1,31 @@
+# This is a Spack Environment file.
+#
+# It describes a set of packages to be installed, along with
+# configuration settings.
+spack:
+  # add package specs to the `specs` list
+  specs:
+  - mumps@5.5.1~blr_mt~complex+double+float~incfort~int64+metis~mpi+openmp~parmetis~ptscotch~scotch+shared
+  - likwid
+  - kokkos@4.4.1:+openmp
+  view: true
+  concretizer:
+    unify: true
+  packages:
+    llvm:
+      externals:
+      - spec: llvm@21.1.6+clang~flang+lld~lldb
+        prefix: /usr
+        extra_attributes:
+          compilers:
+            c: /usr/bin/clang
+            cxx: /usr/bin/clang++
+    gcc:
+      externals:
+      - spec: gcc@15.2.1 languages:='c,c++,fortran'
+        prefix: /usr
+        extra_attributes:
+          compilers:
+            c: /usr/bin/gcc
+            cxx: /usr/bin/g++
+            fortran: /usr/bin/gfortran

@@ -1,0 +1,1 @@
+/home/dhuber/.source/spack/opt/spack/linux-skylake/openssl-3.6.0-t45rxpug5mfnlmipjssr6ciiqn4ietei/.spack/repos/spack_repo/builtin/packages/openssl/package.py
