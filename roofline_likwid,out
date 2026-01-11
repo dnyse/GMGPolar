@@ -1,0 +1,61 @@
+--------------------------------------------------------------------------------
+CPU name:	Intel(R) Xeon(R) Platinum 8360Y CPU @ 2.40GHz
+CPU type:	Intel Icelake SP processor
+CPU clock:	2.39 GHz
+--------------------------------------------------------------------------------
+Note: Google Test filter = RooflineBenchmark.LargeGrid_ForLIKWID
+[==========] Running 1 test from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 1 test from RooflineBenchmark
+[ RUN      ] RooflineBenchmark.LargeGrid_ForLIKWID
+
+Starting large grid benchmark...
+Grid size: 2112 nodes
+This may take a while...
+
+========== ROOFLINE BENCHMARK RESULTS ==========
+Grid Size:              2112 nodes
+Iterations:             500
+Time per iteration:     0.372576 ms
+Performance:            1.309457 GFLOP/s
+Memory Bandwidth:       0.272095 GB/s
+Arithmetic Intensity:   4.812500 FLOP/byte
+================================================
+
+ROOFLINE_DATA,4.812500,1.309457
+[       OK ] RooflineBenchmark.LargeGrid_ForLIKWID (217 ms)
+[----------] 1 test from RooflineBenchmark (217 ms total)
+
+[----------] Global test environment tear-down
+[==========] 1 test from 1 test suite ran. (218 ms total)
+[  PASSED  ] 1 test.
+--------------------------------------------------------------------------------
+Group 1: FLOPS_DP
++------------------------------------------+---------+------------+
+|                   Event                  | Counter | HWThread 0 |
++------------------------------------------+---------+------------+
+|             INSTR_RETIRED_ANY            |  FIXC0  | 1109498543 |
+|           CPU_CLK_UNHALTED_CORE          |  FIXC1  |  495403178 |
+|           CPU_CLK_UNHALTED_REF           |  FIXC2  |  529286016 |
+|               TOPDOWN_SLOTS              |  FIXC3  | 2477015890 |
+| FP_ARITH_INST_RETIRED_128B_PACKED_DOUBLE |   PMC0  |      35264 |
+|    FP_ARITH_INST_RETIRED_SCALAR_DOUBLE   |   PMC1  |  236513721 |
+| FP_ARITH_INST_RETIRED_256B_PACKED_DOUBLE |   PMC2  |     528024 |
+| FP_ARITH_INST_RETIRED_512B_PACKED_DOUBLE |   PMC3  |          0 |
++------------------------------------------+---------+------------+
+
++-------------------------+------------+
+|          Metric         | HWThread 0 |
++-------------------------+------------+
+|   Runtime (RDTSC) [s]   |     0.2345 |
+|   Runtime unhalted [s]  |     0.2069 |
+|       Clock [MHz]       |  2241.0351 |
+|           CPI           |     0.4465 |
+|       DP [MFLOP/s]      |  1017.8787 |
+|     AVX DP [MFLOP/s]    |     9.0067 |
+|   AVX512 DP [MFLOP/s]   |          0 |
+|     Packed [MUOPS/s]    |     2.4020 |
+|     Scalar [MUOPS/s]    |  1008.5713 |
+| Vectorization ratio [%] |     0.2376 |
++-------------------------+------------+
+

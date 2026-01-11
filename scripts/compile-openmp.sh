@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Kokkos configuration
-export Kokkos_DIR="$HOME/source/kokkos/build/cmake_packages/Kokkos"
+# Kokkos configuration for OpenMP
+export Kokkos_DIR="$HOME/source/kokkos/build-openmp/cmake_packages/Kokkos"
 
 # MUMPS directory (if you enable it with -DGMGPOLAR_USE_MUMPS=ON)
 export MUMPS_DIR="$HOME/source/mumps/build/local"
@@ -59,7 +59,7 @@ elif [ "$build_exists" != true ] || [ ! -f "$PROJECT_ROOT/build/CMakeCache.txt" 
 fi
 
 if [ -n "$build_type" ]; then
-    echo "Configuring with $build_type build type..."
+    echo "Configuring with $build_type build type (OpenMP backend)..."
     echo "Using Kokkos from: $Kokkos_DIR"
     echo "Using GCC compiler"
 

@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# Kokkos configuration
-export Kokkos_DIR="$HOME/source/kokkos/build/cmake_packages/Kokkos"
+# Kokkos configuration for CUDA
+export Kokkos_DIR="$HOME/source/kokkos/build-cuda/cmake_packages/Kokkos"
 
 # MUMPS directory (if you enable it with -DGMGPOLAR_USE_MUMPS=ON)
-export MUMPS_DIR="$HOME/source/mumps/build/local"
+export MUMPS_DIR="$HOME/source/mumps/build-cuda/local"
 
 # Get the project root directory (parent of scripts/)
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -59,7 +59,7 @@ elif [ "$build_exists" != true ] || [ ! -f "$PROJECT_ROOT/build/CMakeCache.txt" 
 fi
 
 if [ -n "$build_type" ]; then
-    echo "Configuring with $build_type build type..."
+    echo "Configuring with $build_type build type (CUDA backend)..."
     echo "Using Kokkos from: $Kokkos_DIR"
     echo "Using GCC compiler"
 
@@ -69,7 +69,7 @@ if [ -n "$build_type" ]; then
         -DCMAKE_BUILD_TYPE="$build_type" \
         -DKokkos_DIR="$Kokkos_DIR" \
         -DGMGPOLAR_USE_MUMPS=OFF \
-        -DGMGPOLAR_BUILD_TESTS=ON || { echo "CMake configuration failed"; exit 1; }
+        -DGMGPOLAR_BUILD_TESTS=OFF || { echo "CMake configuration failed"; exit 1; }
 fi
 
 echo "Building project..."
