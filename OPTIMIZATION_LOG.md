@@ -24,7 +24,8 @@ Newest first. One row per experiment. "Kept?" = committed on `smoother-opt` (Y) 
 
 | # | Change | 769² @72t | 1537² @72t | 769² @1t | Correct? | Kept? | Commit | Notes |
 |---|--------|----------:|-----------:|---------:|:--------:|:-----:|--------|-------|
-| 1 | Hot path on raw `double*` (no View copies) + hoist level-cache accessors to raw ptrs | **1.46** | **5.36** | 48.8 | ✅ 11/11 (+275 full) | Y | _pending_ | Killed the 63% `SharedAllocationRecord::increment` contention. Per-node `level_cache_.coeff_beta()[i]` / `coeff_alpha()[i]` each minted a temporary `Kokkos::View` (atomic refcount on shared cacheline); hoisting to `.data()` ptrs before the loop was the decisive change. Now scales positively: 769² 1t 48.8→72t 1.46 = 33×. |
+| 2 | Fuse `deep_copy(temp,rhs)` into the parallel region as an `omp for` | **1.13** | **4.27** | 48.8 | ✅ 11/11 | Y | d694e52 | Removes one Kokkos fork/join per sweep. Big help at 36t (2.76→1.79); 72t improves too (best-of-7). Neutral at 1t (seq path unchanged). |
+| 1 | Hot path on raw `double*` (no View copies) + hoist level-cache accessors to raw ptrs | 1.46 | 5.36 | 48.8 | ✅ 11/11 (+275 full) | Y | e550856 | Killed the 63% `SharedAllocationRecord::increment` contention. Per-node `level_cache_.coeff_beta()[i]` / `coeff_alpha()[i]` each minted a temporary `Kokkos::View` (atomic refcount on shared cacheline); hoisting to `.data()` ptrs before the loop was the decisive change. Now scales positively: 769² 1t 48.8→72t 1.46 = 33×. |
 | 0 | Baseline | 97.7 | 363.5 | 80.9 | ✅ 11/11 | — | 991bc2f | reference |
 
 ## Profiling notes
@@ -34,6 +35,21 @@ Newest first. One row per experiment. "Kept?" = committed on `smoother-opt` (Y) 
 - **3.40%** `SharedAllocationRecord::decrement`
 - **~33%** `libgomp` (OpenMP barrier spin / for-loop dispatch — ~15 barriers/sweep)
 - **<1%** actual stencil math (`applyAscOrtho*`, `CzarnyGeometry`, tridiagonal solvers)
+
+### 72-thread flat profile AFTER fixes (perf, cycles, 1537x2048, commit e550856)
+- **~62%** `libgomp` (OpenMP barrier sync / parallel-for dispatch)
+- **~19%** stencil apply (`applyAscOrthoRadialSection` 14.7% + Circle 3.9%)
+- **~13%** `CzarnyGeometry::dF*` (per-node Jacobian; benchmark runs with
+  `cache_domain_geometry=false`, so this transcendental math is done on the fly)
+- **~3%** tridiagonal solvers, **~3%** temp=rhs copy
+- `SharedAllocationRecord::increment` now **0.7%** (was 63%).
+
+Remaining bottleneck is OpenMP synchronization: ~15 `#pragma omp for` barriers per
+sweep, mandated by the red/black colouring dependencies. Scaling 36t→72t is still
+~1.6× (769²), so this is not pure overhead — the box is near its useful limit for
+this algorithm. Next step (if pursued): reduce barrier count by fusing colour phases,
+or restructure to fewer parallel regions; both are correctness-risky given the
+colouring order.
 
 Root cause of negative scaling: `applyAscOrthoCircleSection/RadialSection` and
 `solveCircleSection/RadialSection` take `Vector<double>` (= `Kokkos::View`) **by value**.

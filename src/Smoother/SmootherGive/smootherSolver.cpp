@@ -546,12 +546,11 @@ void SmootherGive::smoothingForLoop(Vector<double> x, ConstVector<double> rhs, V
         smoothingSequential(x, rhs, temp);
     }
     else {
-        Kokkos::deep_copy(temp,rhs);
-
         /* Raw pointers for the hot path (avoid Kokkos::View ref-count churn) */
         double* x_ptr         = x.data();
         const double* rhs_ptr = rhs.data();
         double* temp_ptr      = temp.data();
+        const int num_nodes   = static_cast<int>(rhs.size());
 
         /* Multi-threaded execution */
         const int num_circle_tasks = grid_.numberSmootherCircles();
@@ -565,6 +564,14 @@ void SmootherGive::smoothingForLoop(Vector<double> x, ConstVector<double> rhs, V
             double* circle_storage_1 = circle_solver_storage_1.data();
             double* circle_storage_2 = circle_solver_storage_2.data();
             double* radial_storage   = radial_solver_storage.data();
+
+            /* Initialize temp = rhs (fused into this parallel region to avoid a
+               separate deep_copy fork/join). Implicit barrier below ensures temp
+               is fully populated before any Asc-ortho apply touches it. */
+            #pragma omp for
+            for (int i = 0; i < num_nodes; i++) {
+                temp_ptr[i] = rhs_ptr[i];
+            }
 
             /* ---------------------------- */
             /* ------ CIRCLE SECTION ------ */
