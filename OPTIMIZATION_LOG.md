@@ -90,3 +90,27 @@ where the pristine code went the *wrong* way (80.9 → 97.7).
 - Reducing the ~15 `omp for` barriers per sweep: the remaining profile is barrier-sync
   dominated, but 36t→72t still scales ~1.6×, and reordering the red/black colour phases
   is correctness-risky for small expected gain. Left as documented next step.
+
+## LIKWID roofline (baseline vs optimized)
+
+Grid 3073×4096 (DRAM-bound, working set ≫ cache), whole-process measurement
+(`likwid-perfctr -g FLOPS_DP / MEM_DP`, no `-m`, summed across cores), high
+`SMOOTHER_ITERS` so the smoother dominates. AI computed manually as
+`(DP_MFLOPs_sum × runtime) / memory_data_volume` (LIKWID's per-socket AI is
+unreliable on 2-socket). Peak ceilings reused from the reference `likwid-bench`.
+
+| cores | baseline GFLOP/s | optimized GFLOP/s | speedup | opt AI (F/B) | opt % of compute peak | opt % of mem roofline |
+|------:|-----------------:|------------------:|--------:|-------------:|----------------------:|----------------------:|
+| 1     | 1.92 | 3.19   | 1.7× | 1.76 | 3.0% | 9%  |
+| 36    | 1.83 | 72.85  | 40×  | 2.30 | 2.5% | 17% |
+| 72    | 1.75 | 104.71 | 60×  | 2.84 | 1.8% | 10% |
+
+Both versions sit in the memory-bound region (AI ≈ 1.5–2.8, ridge ≈ 15 F/B), but
+the baseline achieved only ~0.3% of the memory roofline (buried by ref-count
+contention + barrier overhead); the optimized version reaches ~10–17% — it moved
+~60× up toward the roofline at full node. Still ~6–10× below the memory ceiling,
+consistent with the residual OpenMP-barrier-sync bottleneck (see profiling notes).
+
+PNGs (baseline vs optimized on each roofline, reference PNGs left untouched):
+`HPC-Project/roofline_{1c,36c,72c}_optimized.png` + their `.gnuplot` scripts;
+raw LIKWID output in `HPC-Project/roofline_optimized_data/`.
