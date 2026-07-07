@@ -1,0 +1,49 @@
+# SmootherGive Optimization Log
+
+Tracking the iterative optimization of `SmootherGive::smoothing()` on Fritz
+(2-socket Intel Xeon Platinum 8360Y, 72 cores, AlmaLinux 9). Branch: `smoother-opt`.
+
+Metric: median/best-of-N wall-clock **ms per smoothing iteration** (lower is better),
+from `./scripts/bench_smoother.sh bench`. Primary target: **72-thread** times.
+
+Correctness gate for every kept change: `./scripts/bench_smoother.sh correctness`
+must print `[  PASSED  ] 11 tests.` (SmootherGiveGolden.* + SmootherTest Give suite).
+
+## Baseline (best-of-3, pristine code, commit `991bc2f`)
+
+| Grid       | 1 thread | 36 threads | 72 threads |
+|------------|---------:|-----------:|-----------:|
+| 769×1024   |  80.9 ms |    88.3 ms |    97.7 ms |
+| 1537×2048  | 322.8 ms |        —   |   363.5 ms |
+
+Symptom: **negative scaling** — 72 threads slower than 1.
+
+## Attempts
+
+Newest first. One row per experiment. "Kept?" = committed on `smoother-opt` (Y) or reverted (N).
+
+| # | Change | 769² @72t | 1537² @72t | 769² @1t | Correct? | Kept? | Commit | Notes |
+|---|--------|----------:|-----------:|---------:|:--------:|:-----:|--------|-------|
+| 1 | Hot path on raw `double*` (no View copies) + hoist level-cache accessors to raw ptrs | **1.46** | **5.36** | 48.8 | ✅ 11/11 (+275 full) | Y | _pending_ | Killed the 63% `SharedAllocationRecord::increment` contention. Per-node `level_cache_.coeff_beta()[i]` / `coeff_alpha()[i]` each minted a temporary `Kokkos::View` (atomic refcount on shared cacheline); hoisting to `.data()` ptrs before the loop was the decisive change. Now scales positively: 769² 1t 48.8→72t 1.46 = 33×. |
+| 0 | Baseline | 97.7 | 363.5 | 80.9 | ✅ 11/11 | — | 991bc2f | reference |
+
+## Profiling notes
+
+### 72-thread flat profile (perf, cycles, 769x1024, baseline commit 991bc2f)
+- **60.61%** `Kokkos::Impl::SharedAllocationRecord<void,void>::increment` (atomic ref-count bump)
+- **3.40%** `SharedAllocationRecord::decrement`
+- **~33%** `libgomp` (OpenMP barrier spin / for-loop dispatch — ~15 barriers/sweep)
+- **<1%** actual stencil math (`applyAscOrtho*`, `CzarnyGeometry`, tridiagonal solvers)
+
+Root cause of negative scaling: `applyAscOrthoCircleSection/RadialSection` and
+`solveCircleSection/RadialSection` take `Vector<double>` (= `Kokkos::View`) **by value**.
+Each of the thousands of per-line calls copy-constructs the *shared* `x`/`rhs`/`temp`
+views, and Kokkos atomically increments/decrements their reference counts. All 72
+threads hammer the same 3 ref-count cache lines → cache-line ping-pong dominates.
+Fix: thread the hot path on raw `double*` pointers (no View copies). Secondary:
+per-call `Kokkos::View` scratch allocations + `deep_copy` of tiny subviews also mint
+SharedAllocationRecords under a global lock — replace with plain buffers / `std::copy`.
+
+## Summary of what worked / didn't
+
+_(fill in as evidence accumulates)_
