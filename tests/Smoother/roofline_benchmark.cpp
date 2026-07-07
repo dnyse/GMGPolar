@@ -104,6 +104,18 @@ int get_num_threads(int default_threads)
     return default_threads;
 }
 
+/* Override iteration/warmup counts via env (SMOOTHER_ITERS / SMOOTHER_WARMUP).
+ * Useful for whole-process LIKWID roofline measurement (no -m marker): a large
+ * iteration count makes the smoother dominate the one-off setup cost. */
+int get_env_int(const char* name, int default_value)
+{
+    if (const char* env = std::getenv(name)) {
+        int v = std::atoi(env);
+        if (v > 0) return v;
+    }
+    return default_value;
+}
+
 Vector<double> generate_random_data(const PolarGrid& grid, unsigned int seed)
 {
     Vector<double> x("x", grid.numberOfNodes());
@@ -136,7 +148,9 @@ void run_benchmark_with_config(const BenchmarkConfig& config)
     const double kappa_eps = 0.3;
     const double delta_e   = 1.4;
 
-    int num_threads = get_num_threads(config.default_threads);
+    int num_threads    = get_num_threads(config.default_threads);
+    int num_warmup     = get_env_int("SMOOTHER_WARMUP", config.num_warmup);
+    int num_iterations = get_env_int("SMOOTHER_ITERS", config.num_iterations);
 
     // Build uniform grid
     std::vector<double> radii(config.nr);
@@ -172,7 +186,7 @@ void run_benchmark_with_config(const BenchmarkConfig& config)
 #endif
 
     // Warmup (outside measurement region)
-    for (int i = 0; i < config.num_warmup; ++i) {
+    for (int i = 0; i < num_warmup; ++i) {
         smoother_op.smoothing(solution, rhs, temp);
     }
 
@@ -183,7 +197,7 @@ void run_benchmark_with_config(const BenchmarkConfig& config)
     LIKWID_MARKER_START(config.marker_name.c_str());
 #endif
 
-    for (int i = 0; i < config.num_iterations; ++i) {
+    for (int i = 0; i < num_iterations; ++i) {
         smoother_op.smoothing(solution, rhs, temp);
     }
 
@@ -198,13 +212,13 @@ void run_benchmark_with_config(const BenchmarkConfig& config)
 #endif
 
     double elapsed_ms       = std::chrono::duration<double, std::milli>(t_end - t_start).count();
-    double time_per_iter_ms = elapsed_ms / config.num_iterations;
+    double time_per_iter_ms = elapsed_ms / num_iterations;
 
     std::cout << std::fixed << std::setprecision(3);
     std::cout << "Grid: " << config.nr << " x " << config.ntheta
               << "  nodes: " << level.grid().numberOfNodes()
               << "  threads: " << num_threads
-              << "  iterations: " << config.num_iterations
+              << "  iterations: " << num_iterations
               << "  time/iter: " << time_per_iter_ms << " ms\n";
 
     // CSV line for scaling plots: grep "TIMING_CSV" from output
@@ -212,7 +226,7 @@ void run_benchmark_with_config(const BenchmarkConfig& config)
               << config.nr << "," << config.ntheta << ","
               << level.grid().numberOfNodes() << ","
               << num_threads << ","
-              << config.num_iterations << ","
+              << num_iterations << ","
               << time_per_iter_ms << "\n";
 }
 
