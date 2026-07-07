@@ -323,24 +323,43 @@
         }                                                                                                              \
     } while (0)
 
+SmootherGive::LevelCachePtrs SmootherGive::makeLevelCachePtrs() const
+{
+    /* Compute all level-cache raw pointers ONCE per sweep. Each level_cache_ accessor
+       returns a Kokkos::View by value (atomic ref-count bump on a shared control block);
+       calling them once per line instead of once per sweep caused residual cross-thread
+       cache-line contention. */
+    const bool cache_coeff = level_cache_.cacheDensityProfileCoefficients();
+    const bool cache_geom  = level_cache_.cacheDomainGeometry();
+    return LevelCachePtrs{
+        level_cache_.sin_theta().data(),
+        level_cache_.cos_theta().data(),
+        cache_coeff ? level_cache_.coeff_beta().data() : nullptr,
+        cache_coeff ? level_cache_.coeff_alpha().data() : nullptr,
+        cache_geom ? level_cache_.arr().data() : nullptr,
+        cache_geom ? level_cache_.att().data() : nullptr,
+        cache_geom ? level_cache_.art().data() : nullptr,
+        cache_geom ? level_cache_.detDF().data() : nullptr,
+        cache_coeff,
+        cache_geom,
+    };
+}
+
 void SmootherGive::applyAscOrthoCircleSection(const int i_r, const SmootherColor smoother_color, const double* x,
-                                              const double* rhs, double* temp)
+                                              const double* rhs, double* temp, const LevelCachePtrs& lc)
 {
     assert(i_r >= 0 && i_r < grid_.numberSmootherCircles() + 1);
 
-    /* Hoist all level-cache View accessors to raw pointers (avoid per-node Kokkos::View
-       ref-count churn: each accessor returns a View by value). */
-    const double* const sin_theta_cache = level_cache_.sin_theta().data();
-    const double* const cos_theta_cache = level_cache_.cos_theta().data();
-
-    const bool cache_coeff = level_cache_.cacheDensityProfileCoefficients();
-    const bool cache_geom  = level_cache_.cacheDomainGeometry();
-    const double* const coeff_beta_cache  = cache_coeff ? level_cache_.coeff_beta().data() : nullptr;
-    const double* const coeff_alpha_cache = cache_coeff ? level_cache_.coeff_alpha().data() : nullptr;
-    const double* const arr_cache   = cache_geom ? level_cache_.arr().data() : nullptr;
-    const double* const att_cache   = cache_geom ? level_cache_.att().data() : nullptr;
-    const double* const art_cache   = cache_geom ? level_cache_.art().data() : nullptr;
-    const double* const detDF_cache = cache_geom ? level_cache_.detDF().data() : nullptr;
+    const double* const sin_theta_cache   = lc.sin_theta;
+    const double* const cos_theta_cache   = lc.cos_theta;
+    const bool cache_coeff                = lc.cache_coeff;
+    const bool cache_geom                 = lc.cache_geom;
+    const double* const coeff_beta_cache  = lc.coeff_beta;
+    const double* const coeff_alpha_cache = lc.coeff_alpha;
+    const double* const arr_cache         = lc.arr;
+    const double* const att_cache         = lc.att;
+    const double* const art_cache         = lc.art;
+    const double* const detDF_cache       = lc.detDF;
 
     const double r = grid_.radius(i_r);
 
@@ -384,21 +403,19 @@ void SmootherGive::applyAscOrthoCircleSection(const int i_r, const SmootherColor
 }
 
 void SmootherGive::applyAscOrthoRadialSection(const int i_theta, const SmootherColor smoother_color,
-                                              const double* x, const double* rhs, double* temp)
+                                              const double* x, const double* rhs, double* temp,
+                                              const LevelCachePtrs& lc)
 {
-    /* Hoist all level-cache View accessors to raw pointers (avoid per-node Kokkos::View
-       ref-count churn: each accessor returns a View by value). */
-    const double* const sin_theta_cache = level_cache_.sin_theta().data();
-    const double* const cos_theta_cache = level_cache_.cos_theta().data();
-
-    const bool cache_coeff = level_cache_.cacheDensityProfileCoefficients();
-    const bool cache_geom  = level_cache_.cacheDomainGeometry();
-    const double* const coeff_beta_cache  = cache_coeff ? level_cache_.coeff_beta().data() : nullptr;
-    const double* const coeff_alpha_cache = cache_coeff ? level_cache_.coeff_alpha().data() : nullptr;
-    const double* const arr_cache   = cache_geom ? level_cache_.arr().data() : nullptr;
-    const double* const att_cache   = cache_geom ? level_cache_.att().data() : nullptr;
-    const double* const art_cache   = cache_geom ? level_cache_.art().data() : nullptr;
-    const double* const detDF_cache = cache_geom ? level_cache_.detDF().data() : nullptr;
+    const double* const sin_theta_cache   = lc.sin_theta;
+    const double* const cos_theta_cache   = lc.cos_theta;
+    const bool cache_coeff                = lc.cache_coeff;
+    const bool cache_geom                 = lc.cache_geom;
+    const double* const coeff_beta_cache  = lc.coeff_beta;
+    const double* const coeff_alpha_cache = lc.coeff_alpha;
+    const double* const arr_cache         = lc.arr;
+    const double* const att_cache         = lc.att;
+    const double* const art_cache         = lc.art;
+    const double* const detDF_cache       = lc.detDF;
 
     const double theta     = grid_.theta(i_theta);
     const double sin_theta = sin_theta_cache[i_theta];
@@ -493,6 +510,8 @@ void SmootherGive::smoothingSequential(Vector<double> x, ConstVector<double> rhs
     const double* rhs_ptr  = rhs.data();
     double* temp_ptr       = temp.data();
 
+    const LevelCachePtrs lc = makeLevelCachePtrs();
+
     /* Single-threaded execution */
     std::vector<double> circle_solver_storage_1(grid_.ntheta());
     std::vector<double> circle_solver_storage_2(grid_.ntheta());
@@ -504,14 +523,14 @@ void SmootherGive::smoothingSequential(Vector<double> x, ConstVector<double> rhs
     /* The outer most circle next to the radial section is defined to be black. */
     /* Priority: Black -> White. */
     for (int i_r = 0; i_r < grid_.numberSmootherCircles() + 1; i_r++) {
-        applyAscOrthoCircleSection(i_r, SmootherColor::Black, x_ptr, rhs_ptr, temp_ptr);
+        applyAscOrthoCircleSection(i_r, SmootherColor::Black, x_ptr, rhs_ptr, temp_ptr, lc);
     }
     const int start_black_circles = (grid_.numberSmootherCircles() % 2 == 0) ? 1 : 0;
     for (int i_r = start_black_circles; i_r < grid_.numberSmootherCircles(); i_r += 2) {
         solveCircleSection(i_r, x_ptr, temp_ptr, circle_solver_storage_1.data(), circle_solver_storage_2.data());
     }
     for (int i_r = 0; i_r < grid_.numberSmootherCircles(); i_r++) {
-        applyAscOrthoCircleSection(i_r, SmootherColor::White, x_ptr, rhs_ptr, temp_ptr);
+        applyAscOrthoCircleSection(i_r, SmootherColor::White, x_ptr, rhs_ptr, temp_ptr, lc);
     }
     const int start_white_circles = (grid_.numberSmootherCircles() % 2 == 0) ? 0 : 1;
     for (int i_r = start_white_circles; i_r < grid_.numberSmootherCircles(); i_r += 2) {
@@ -520,13 +539,13 @@ void SmootherGive::smoothingSequential(Vector<double> x, ConstVector<double> rhs
     /* ---------------------------- */
     /* ------ RADIAL SECTION ------ */
     for (int i_theta = 0; i_theta < grid_.ntheta(); i_theta++) {
-        applyAscOrthoRadialSection(i_theta, SmootherColor::Black, x_ptr, rhs_ptr, temp_ptr);
+        applyAscOrthoRadialSection(i_theta, SmootherColor::Black, x_ptr, rhs_ptr, temp_ptr, lc);
     }
     for (int i_theta = 0; i_theta < grid_.ntheta(); i_theta += 2) {
         solveRadialSection(i_theta, x_ptr, temp_ptr, radial_solver_storage.data());
     }
     for (int i_theta = 0; i_theta < grid_.ntheta(); i_theta++) {
-        applyAscOrthoRadialSection(i_theta, SmootherColor::White, x_ptr, rhs_ptr, temp_ptr);
+        applyAscOrthoRadialSection(i_theta, SmootherColor::White, x_ptr, rhs_ptr, temp_ptr, lc);
     }
     for (int i_theta = 1; i_theta < grid_.ntheta(); i_theta += 2) {
         solveRadialSection(i_theta, x_ptr, temp_ptr, radial_solver_storage.data());
@@ -551,6 +570,7 @@ void SmootherGive::smoothingForLoop(Vector<double> x, ConstVector<double> rhs, V
         const double* rhs_ptr = rhs.data();
         double* temp_ptr      = temp.data();
         const int num_nodes   = static_cast<int>(rhs.size());
+        const LevelCachePtrs lc = makeLevelCachePtrs();
 
         /* Multi-threaded execution */
         const int num_circle_tasks = grid_.numberSmootherCircles();
@@ -584,21 +604,21 @@ void SmootherGive::smoothingForLoop(Vector<double> x, ConstVector<double> rhs, V
             #pragma omp for
             for (int circle_task = 0; circle_task < num_circle_tasks; circle_task += 2) {
                 int i_r = num_circle_tasks - circle_task - 1;
-                applyAscOrthoCircleSection(i_r, SmootherColor::Black, x_ptr, rhs_ptr, temp_ptr);
+                applyAscOrthoCircleSection(i_r, SmootherColor::Black, x_ptr, rhs_ptr, temp_ptr, lc);
             }
 
             /* Outside Black Section (Part 1)*/
             #pragma omp for
             for (int circle_task = -1; circle_task < num_circle_tasks; circle_task += 4) {
                 int i_r = num_circle_tasks - circle_task - 1;
-                applyAscOrthoCircleSection(i_r, SmootherColor::Black, x_ptr, rhs_ptr, temp_ptr);
+                applyAscOrthoCircleSection(i_r, SmootherColor::Black, x_ptr, rhs_ptr, temp_ptr, lc);
             }
 
             /* Outside Black Section (Part 2)*/
             #pragma omp for
             for (int circle_task = 1; circle_task < num_circle_tasks; circle_task += 4) {
                 int i_r = num_circle_tasks - circle_task - 1;
-                applyAscOrthoCircleSection(i_r, SmootherColor::Black, x_ptr, rhs_ptr, temp_ptr);
+                applyAscOrthoCircleSection(i_r, SmootherColor::Black, x_ptr, rhs_ptr, temp_ptr, lc);
             }
 
             /* Black Circle Smoother */
@@ -614,7 +634,7 @@ void SmootherGive::smoothingForLoop(Vector<double> x, ConstVector<double> rhs, V
             #pragma omp for nowait
             for (int circle_task = 1; circle_task < num_circle_tasks; circle_task += 2) {
                 int i_r = num_circle_tasks - circle_task - 1;
-                applyAscOrthoCircleSection(i_r, SmootherColor::White, x_ptr, rhs_ptr, temp_ptr);
+                applyAscOrthoCircleSection(i_r, SmootherColor::White, x_ptr, rhs_ptr, temp_ptr, lc);
             }
             /* ---------------------------- */
             /* Asc ortho Black Radial Tasks */
@@ -622,7 +642,7 @@ void SmootherGive::smoothingForLoop(Vector<double> x, ConstVector<double> rhs, V
             #pragma omp for
             for (int radial_task = 0; radial_task < num_radial_tasks; radial_task += 2) {
                 int i_theta = radial_task;
-                applyAscOrthoRadialSection(i_theta, SmootherColor::Black, x_ptr, rhs_ptr, temp_ptr);
+                applyAscOrthoRadialSection(i_theta, SmootherColor::Black, x_ptr, rhs_ptr, temp_ptr, lc);
             }
 
             /* ---------------------------- */
@@ -631,7 +651,7 @@ void SmootherGive::smoothingForLoop(Vector<double> x, ConstVector<double> rhs, V
             #pragma omp for nowait
             for (int circle_task = 0; circle_task < num_circle_tasks; circle_task += 4) {
                 int i_r = num_circle_tasks - circle_task - 1;
-                applyAscOrthoCircleSection(i_r, SmootherColor::White, x_ptr, rhs_ptr, temp_ptr);
+                applyAscOrthoCircleSection(i_r, SmootherColor::White, x_ptr, rhs_ptr, temp_ptr, lc);
             }
             /* ---------------------------- */
             /* Asc ortho Black Radial Tasks */
@@ -639,7 +659,7 @@ void SmootherGive::smoothingForLoop(Vector<double> x, ConstVector<double> rhs, V
             #pragma omp for
             for (int radial_task = 1; radial_task < num_radial_tasks; radial_task += 4) {
                 int i_theta = radial_task;
-                applyAscOrthoRadialSection(i_theta, SmootherColor::Black, x_ptr, rhs_ptr, temp_ptr);
+                applyAscOrthoRadialSection(i_theta, SmootherColor::Black, x_ptr, rhs_ptr, temp_ptr, lc);
             }
 
             /* ---------------------------- */
@@ -648,7 +668,7 @@ void SmootherGive::smoothingForLoop(Vector<double> x, ConstVector<double> rhs, V
             #pragma omp for nowait
             for (int circle_task = 2; circle_task < num_circle_tasks; circle_task += 4) {
                 int i_r = num_circle_tasks - circle_task - 1;
-                applyAscOrthoCircleSection(i_r, SmootherColor::White, x_ptr, rhs_ptr, temp_ptr);
+                applyAscOrthoCircleSection(i_r, SmootherColor::White, x_ptr, rhs_ptr, temp_ptr, lc);
             }
             /* ---------------------------- */
             /* Asc ortho Black Radial Tasks */
@@ -656,7 +676,7 @@ void SmootherGive::smoothingForLoop(Vector<double> x, ConstVector<double> rhs, V
             #pragma omp for
             for (int radial_task = 3; radial_task < num_radial_tasks; radial_task += 4) {
                 int i_theta = radial_task;
-                applyAscOrthoRadialSection(i_theta, SmootherColor::Black, x_ptr, rhs_ptr, temp_ptr);
+                applyAscOrthoRadialSection(i_theta, SmootherColor::Black, x_ptr, rhs_ptr, temp_ptr, lc);
             }
 
             /* White Circle Smoother */
@@ -679,19 +699,19 @@ void SmootherGive::smoothingForLoop(Vector<double> x, ConstVector<double> rhs, V
             #pragma omp for
             for (int radial_task = 1; radial_task < num_radial_tasks; radial_task += 2) {
                 int i_theta = radial_task;
-                applyAscOrthoRadialSection(i_theta, SmootherColor::White, x_ptr, rhs_ptr, temp_ptr);
+                applyAscOrthoRadialSection(i_theta, SmootherColor::White, x_ptr, rhs_ptr, temp_ptr, lc);
             }
             /* Outside White Section (Part 1) */
             #pragma omp for
             for (int radial_task = 0; radial_task < num_radial_tasks; radial_task += 4) {
                 int i_theta = radial_task;
-                applyAscOrthoRadialSection(i_theta, SmootherColor::White, x_ptr, rhs_ptr, temp_ptr);
+                applyAscOrthoRadialSection(i_theta, SmootherColor::White, x_ptr, rhs_ptr, temp_ptr, lc);
             }
             /* Outside White Section (Part 2) */
             #pragma omp for
             for (int radial_task = 2; radial_task < num_radial_tasks; radial_task += 4) {
                 int i_theta = radial_task;
-                applyAscOrthoRadialSection(i_theta, SmootherColor::White, x_ptr, rhs_ptr, temp_ptr);
+                applyAscOrthoRadialSection(i_theta, SmootherColor::White, x_ptr, rhs_ptr, temp_ptr, lc);
             }
 
             /* White Radial Smoother */
