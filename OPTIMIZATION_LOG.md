@@ -62,4 +62,31 @@ SharedAllocationRecords under a global lock — replace with plain buffers / `st
 
 ## Summary of what worked / didn't
 
-_(fill in as evidence accumulates)_
+### Final results (best-of-7, commit `558fd19`)
+
+| Grid       | 1 thread | 36 threads | 72 threads | 72t speedup vs baseline |
+|------------|---------:|-----------:|-----------:|------------------------:|
+| 769×1024   | 48.8 ms  |  1.79 ms   |  1.13 ms   | **86×** (97.7→1.13)     |
+| 1537×2048  | 194.2 ms |     —      |  4.27 ms   | **85×** (363.5→4.27)    |
+
+Scaling is now strongly positive: 769² goes 48.8 ms @1t → 1.13 ms @72t (**43×**),
+where the pristine code went the *wrong* way (80.9 → 97.7).
+
+### What mattered (ranked)
+1. **Hoisting per-node `Kokkos::View` accessors to raw pointers** (`coeff_beta()[i]`,
+   `coeff_alpha()[i]`, etc.) — decisive. These minted a temporary View per node and
+   atomically bumped a shared reference count, so 72 threads ping-ponged the same
+   cache line. This single change removed the 63% hotspot and flipped scaling positive.
+2. **Passing the hot path on raw `double*` instead of `Vector<double>` by value** —
+   same class of problem (View copy-construct per call) for the `x`/`rhs`/`temp`
+   arguments; part of the same commit. Also let `solve*` use `std::copy` instead of
+   `Kokkos::deep_copy` on tiny subviews.
+3. **Fusing `deep_copy(temp,rhs)` into the parallel region** — one fewer fork/join
+   per sweep; clear win at 36t, modest at 72t.
+
+### Not needed / not pursued
+- Per-thread scratch was switched from `Kokkos::View` to `std::vector` as part of #1
+  (avoids the global allocation lock), but this was minor next to the accessor fix.
+- Reducing the ~15 `omp for` barriers per sweep: the remaining profile is barrier-sync
+  dominated, but 36t→72t still scales ~1.6×, and reordering the red/black colour phases
+  is correctness-risky for small expected gain. Left as documented next step.
