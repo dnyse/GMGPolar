@@ -24,7 +24,7 @@ Newest first. One row per experiment. "Kept?" = committed on `smoother-opt` (Y) 
 
 | # | Change | 769² @72t | 1537² @72t | 769² @1t | Correct? | Kept? | Commit | Notes |
 |---|--------|----------:|-----------:|---------:|:--------:|:-----:|--------|-------|
-| 2 | Fuse `deep_copy(temp,rhs)` into the parallel region as an `omp for` | **1.13** | **4.27** | 48.8 | ✅ 11/11 | Y | d694e52 | Removes one Kokkos fork/join per sweep. Big help at 36t (2.76→1.79); 72t improves too (best-of-7). Neutral at 1t (seq path unchanged). |
+| 2 | Fuse `deep_copy(temp,rhs)` into the parallel region as an `omp for` | **1.13** | **4.27** | 48.8 | ✅ 11/11 | Y | 558fd19 | Removes one Kokkos fork/join per sweep. Big help at 36t (2.76→1.79); 72t improves too (best-of-7). Neutral at 1t (seq path unchanged). |
 | 1 | Hot path on raw `double*` (no View copies) + hoist level-cache accessors to raw ptrs | 1.46 | 5.36 | 48.8 | ✅ 11/11 (+275 full) | Y | e550856 | Killed the 63% `SharedAllocationRecord::increment` contention. Per-node `level_cache_.coeff_beta()[i]` / `coeff_alpha()[i]` each minted a temporary `Kokkos::View` (atomic refcount on shared cacheline); hoisting to `.data()` ptrs before the loop was the decisive change. Now scales positively: 769² 1t 48.8→72t 1.46 = 33×. |
 | 0 | Baseline | 97.7 | 363.5 | 80.9 | ✅ 11/11 | — | 991bc2f | reference |
 
