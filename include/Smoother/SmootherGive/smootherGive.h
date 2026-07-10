@@ -83,14 +83,31 @@ private:
     void buildAscCircleSection(const int i_r);
     void buildAscRadialSection(const int i_theta);
 
-    void applyAscOrthoCircleSection(const int i_r, const SmootherColor smoother_color, ConstVector<double> x,
-                                    ConstVector<double> rhs, Vector<double> temp);
-    void applyAscOrthoRadialSection(const int i_theta, const SmootherColor smoother_color, ConstVector<double> x,
-                                    ConstVector<double> rhs, Vector<double> temp);
+    /* Raw pointers into the level cache, hoisted once per sweep so the hot loops
+       never copy-construct a Kokkos::View (which atomically bumps a shared
+       reference count and causes cache-line contention across threads). */
+    struct LevelCachePtrs {
+        const double* sin_theta;
+        const double* cos_theta;
+        const double* coeff_beta;  // valid iff cache_coeff
+        const double* coeff_alpha; // valid iff cache_coeff
+        const double* arr;         // valid iff cache_geom
+        const double* att;         // valid iff cache_geom
+        const double* art;         // valid iff cache_geom
+        const double* detDF;       // valid iff cache_geom
+        bool cache_coeff;
+        bool cache_geom;
+    };
+    LevelCachePtrs makeLevelCachePtrs() const;
 
-    void solveCircleSection(const int i_r, Vector<double> x, Vector<double> temp, Vector<double> solver_storage_1,
-                            Vector<double> solver_storage_2);
-    void solveRadialSection(const int i_theta, Vector<double> x, Vector<double> temp, Vector<double> solver_storage);
+    void applyAscOrthoCircleSection(const int i_r, const SmootherColor smoother_color, const double* x,
+                                    const double* rhs, double* temp, const LevelCachePtrs& lc);
+    void applyAscOrthoRadialSection(const int i_theta, const SmootherColor smoother_color, const double* x,
+                                    const double* rhs, double* temp, const LevelCachePtrs& lc);
+
+    void solveCircleSection(const int i_r, double* x, double* temp, double* solver_storage_1,
+                            double* solver_storage_2);
+    void solveRadialSection(const int i_theta, double* x, double* temp, double* solver_storage);
 
 #ifdef GMGPOLAR_USE_MUMPS
     void initializeMumpsSolver(DMUMPS_STRUC_C& mumps_solver, SparseMatrixCOO<double>& solver_matrix);

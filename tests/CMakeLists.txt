@@ -23,6 +23,7 @@ add_executable(gmgpolar_tests
     DirectSolver/directSolver.cpp
     DirectSolver/directSolverNoMumps.cpp
     Smoother/smoother.cpp
+    Smoother/smoother_give_golden.cpp
     Smoother/roofline_benchmark.cpp
     ExtrapolatedSmoother/extrapolated_smoother.cpp
     ConfigParser/config_parser.cpp

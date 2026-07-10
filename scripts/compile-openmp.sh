@@ -1,19 +1,20 @@
 #!/bin/bash
 
-# Kokkos configuration for OpenMP
-export Kokkos_DIR="$HOME/source/kokkos/build-openmp/cmake_packages/Kokkos"
-
-# MUMPS directory (if you enable it with -DGMGPOLAR_USE_MUMPS=ON)
-export MUMPS_DIR="$HOME/source/mumps/build/local"
-
-# LIKWID configuration for roofline benchmarking
-# Set LIKWID_DIR to where LIKWID is installed
-export LIKWID_DIR="/apps/likwid/5.4.1"
-LIKWID_ENABLED=ON
-
 # Get the project root directory (parent of scripts/)
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
+
+# Kokkos configuration for OpenMP
+# Local Kokkos 4.6.02 OpenMP build (see kokkos/install-openmp)
+export Kokkos_DIR="${Kokkos_DIR:-$PROJECT_ROOT/kokkos/install-openmp/lib64/cmake/Kokkos}"
+
+# MUMPS directory (if you enable it with -DGMGPOLAR_USE_MUMPS=ON)
+export MUMPS_DIR="${MUMPS_DIR:-$HOME/source/mumps/build/local}"
+
+# LIKWID configuration for roofline benchmarking
+# Prefer the module-provided LIKWID (LIKWID_ROOT set by `module load tools/likwid`)
+export LIKWID_DIR="${LIKWID_DIR:-${LIKWID_ROOT:-/apps/likwid/5.4.1}}"
+LIKWID_ENABLED=ON
 
 # Function to display usage information
 usage() {
